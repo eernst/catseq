@@ -16,9 +16,9 @@ import (
 )
 
 var RootCmd = &cobra.Command{
-	Use:   "goseq",
-	Short: "goseq is a toolbox for performing common operations on sequence data.",
-	Long:  `goseq is a toolbox for working with genomes, annotations, sequencing reads and the like.`,
+	Use:   "catseq",
+	Short: "catseq is a toolbox for performing common operations on sequence data.",
+	Long:  `catseq is a toolbox for working with genomes, annotations, sequencing reads and the like.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
 			fmt.Fprintf(os.Stderr, "Please provide a command to run.\n\n")
@@ -38,7 +38,7 @@ const MaxInt = math.MaxInt32
 type GoseqCommand string
 
 const (
-	// The various commands goseq can perform
+	// The various commands catseq can perform
 	INFO    GoseqCommand = "info"
 	FILTER               = "filter"
 	VERSION              = "version"
@@ -128,7 +128,7 @@ func init() {
 	// Cobra supports Persistent Flags, which, if defined here,
 	// will be global for your application.
 
-	//RootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.goseq.yaml)")
+	//RootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.catseq.yaml)")
 	RootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "", false, "Enable verbose output.")
 	RootCmd.PersistentFlags().BoolVarP(&PrintHeader, "print-header", "", false, "Include column header in output.")
 	//RootCmd.PersistentFlags().IntVarP(&NumProcs, "procs", "p", 1, "Use up to this many processors/cores in parallel.")
@@ -142,12 +142,12 @@ func init() {
 	flag.Usage = func() {
 		switch GoseqCommand(flag.Arg(0)) {
 		case INFO, FILTER:
-			fmt.Fprintf(os.Stderr, "usage: goseq %v [command options...] [sequence files...]\n\n", flag.Arg(0))
+			fmt.Fprintf(os.Stderr, "usage: catseq %v [command options...] [sequence files...]\n\n", flag.Arg(0))
 			flag.PrintDefaults()
 		case VERSION:
 			versionCmd.Execute()
 		default:
-			fmt.Fprintf(os.Stderr, "usage: goseq [options] command [command options...] [sequence files...]\n\n")
+			fmt.Fprintf(os.Stderr, "usage: catseq [options] command [command options...] [sequence files...]\n\n")
 			flag.PrintDefaults()
 		}
 	}
@@ -167,9 +167,9 @@ func initConfig() {
 		viper.SetConfigFile(cfgFile)
 	}
 
-	viper.SetConfigName(".goseq") // name of config file (without extension)
-	viper.AddConfigPath("$HOME")  // adding home directory as first search path
-	viper.AutomaticEnv()          // read in environment variables that match
+	viper.SetConfigName(".catseq") // name of config file (without extension)
+	viper.AddConfigPath("$HOME")   // adding home directory as first search path
+	viper.AutomaticEnv()           // read in environment variables that match
 
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {

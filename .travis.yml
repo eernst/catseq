@@ -1,0 +1,9 @@
+language: go
+
+go:
+        - master
+
+install:
+        - go get github.com/biogo/biogo
+        - go get github.com/spf13/cobra
+        - go get github.com/spf13/viper

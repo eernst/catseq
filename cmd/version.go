@@ -28,6 +28,6 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version number.",
 	Long:  `Output the version number of this binary. What more can be said?`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("goseq version %v.%v.%v\n\n", MAJOR, MINOR, REVISION)
+		fmt.Printf("catseq version %v.%v.%v\n\n", MAJOR, MINOR, REVISION)
 	},
 }
