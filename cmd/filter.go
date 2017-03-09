@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/eernst/gnomics/seqmath"
+	"github.com/eernst/catseq/seqmath"
 
 	"github.com/biogo/biogo/alphabet"
 	"github.com/biogo/biogo/io/seqio"

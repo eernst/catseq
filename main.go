@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/eernst/gnomics/cmd"
+	"github.com/eernst/catseq/cmd"
 	"os"
 )
 
