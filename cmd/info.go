@@ -178,8 +178,9 @@ specified.`,
 		fmt.Fprintf(summaryOut, "Overall GC Content (%%): %15.2f\n", totalGcPercent)
 		fmt.Fprintf(summaryOut, "Shortest (bp): %24d\n", seqLens[0])
 		fmt.Fprintf(summaryOut, "Longest (bp): %25d\n", seqLens[len(seqLens)-1])
+		fmt.Fprintf(summaryOut, "N80 (bp): %29d\n", nxx[80])
 		fmt.Fprintf(summaryOut, "N50 (bp): %29d\n", nxx[50])
-		fmt.Fprintf(summaryOut, "N75 (bp): %29d\n", nxx[75])
+		fmt.Fprintf(summaryOut, "N20 (bp): %29d\n", nxx[20])
 		// Would be better to test the Sequence for quality info
 		if seqsInFormat == "fastq" {
 			fmt.Fprintf(summaryOut, "\nPER-SEQ\n"+sep)
