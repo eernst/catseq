@@ -166,49 +166,10 @@ specified.`,
 		meanQualityPerBase := float64(sumBaseQualityScores) / float64(totalSeqLength)
 		meanErrorProbPerBase := float64(sumBaseErrorProbs) / float64(totalSeqLength)
 
-		// N50 Calc
 		sort.Ints(seqLens)
-		//seqLens = sort.Reverse(seqLens)
-		var seqLensCum []int
-		var cumLen int
 
-		cumLen = 0
-		var n50 int
-		for i, l := range seqLens {
-			if i == 0 {
-				seqLensCum = append(seqLensCum, seqLens[i])
-			} else {
-				seqLensCum = append(seqLensCum, seqLens[i]+seqLens[i-1])
-
-			}
-			//fmt.Fprintf(os.Stderr, "seqLensCum[%v] = %v\n", i, seqLensCum[i])
-			newLen := cumLen + l
-			if newLen > totalSeqLength/2 {
-				break
-			} else {
-				n50 = l
-				cumLen = newLen
-			}
-		}
-
-		cumLen = 0
-		var n75 int
-		for i, l := range seqLens {
-			if i == 0 {
-				seqLensCum = append(seqLensCum, seqLens[i])
-			} else {
-				seqLensCum = append(seqLensCum, seqLens[i]+seqLens[i-1])
-
-			}
-			//fmt.Fprintf(os.Stderr, "seqLensCum[%v] = %v\n", i, seqLensCum[i])
-			newLen := cumLen + l
-			if newLen > totalSeqLength/4 {
-				break
-			} else {
-				n75 = l
-				cumLen = newLen
-			}
-		}
+		// NXX Calc
+		var nxx []int = seqmath.Nxx(seqLens, totalSeqLength)
 
 		const sep string = "--------------------\n"
 		fmt.Fprintf(summaryOut, "\nSUMMARY\n"+sep)
@@ -217,8 +178,8 @@ specified.`,
 		fmt.Fprintf(summaryOut, "Overall GC Content (%%): %15.2f\n", totalGcPercent)
 		fmt.Fprintf(summaryOut, "Shortest (bp): %24d\n", seqLens[0])
 		fmt.Fprintf(summaryOut, "Longest (bp): %25d\n", seqLens[len(seqLens)-1])
-		fmt.Fprintf(summaryOut, "N50 (bp): %29d\n", n50)
-		fmt.Fprintf(summaryOut, "N75 (bp): %29d\n", n75)
+		fmt.Fprintf(summaryOut, "N50 (bp): %29d\n", nxx[50])
+		fmt.Fprintf(summaryOut, "N75 (bp): %29d\n", nxx[75])
 		// Would be better to test the Sequence for quality info
 		if seqsInFormat == "fastq" {
 			fmt.Fprintf(summaryOut, "\nPER-SEQ\n"+sep)
