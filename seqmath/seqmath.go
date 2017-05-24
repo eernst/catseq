@@ -25,11 +25,10 @@ func ErrorProbForQ(qual int) (prob float64) {
 }
 
 // Nxx returns an int slice with all values N1..N50..N99 calculated for the input slice
-// of sequence lengths. The input slice does not need to be sorted, but currently the
-// total length must also be passed to avoid a second pass.
+// of sequence lengths. The input slice does not need to be sorted, but the total length
+// must also be passed to avoid a second pass.
 func Nxx(seqLens []int, totalSeqLength int) (nxx []int) {
 	nxx = make([]int, 100)
-	// N50 Calc
 	var sls = seqLens
 	if !sort.IntsAreSorted(sls) {
 		sort.Ints(sls)

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strings"
+	//"strings"
 	"time"
 
 	"github.com/eernst/catseq/seqmath"
@@ -94,12 +94,14 @@ specified.`,
 		}
 
 		if PrintHeader {
-			fmt.Fprintf(os.Stdout, "accession\tlength\tgc-content\tmean quality\tmean P(error)\t")
+			fmt.Fprintf(os.Stdout, "accession\tlength\tgc-content\tmean quality\tmean P(error)\t\n")
 		}
 
 		totalSeqs := 0
 		totalGcCount := 0
 		totalSeqLength := 0
+		totalNonATGCNBases := 0
+		totalNBases := 0
 		var sumBaseQualityScores int
 		var sumMeanQualityScores float64
 		var sumBaseErrorProbs float64
@@ -127,13 +129,31 @@ specified.`,
 			}
 
 			seqStr := string(seqBytes)
-			gcCount := strings.Count(seqStr, "C") + strings.Count(seqStr, "G") + strings.Count(seqStr, "c") + strings.Count(seqStr, "g")
-			gcRatio := float64(gcCount) / float64(s.Len())
+			gcBases := 0
+			atBases := 0
+			nonATGCNBases := 0
+			nBases := 0
+			for _, char := range seqStr {
+				switch char {
+				case 'C', 'c', 'G', 'g':
+					gcBases++
+				case 'A', 'a', 'T', 't':
+					atBases++
+				case 'N':
+					nBases++
+				default:
+					nonATGCNBases++
+				}
+			}
+			//gcRatio := float64(gcCount) / float64(s.Len())
+			gcRatio := float64(gcBases) / float64(s.Len()-(nonATGCNBases+nBases))
 			gcPercent := gcRatio * 100
 
 			totalSeqs += 1
-			totalGcCount += gcCount
+			totalGcCount += gcBases
 			totalSeqLength += s.Len()
+			totalNonATGCNBases += nonATGCNBases
+			totalNBases += nBases
 
 			meanBaseQual := float64(qualScores) / float64(s.Len())
 			meanErrorProb := float64(errorProbs) / float64(s.Len())
@@ -160,6 +180,9 @@ specified.`,
 		totalGcRatio := float64(totalGcCount) / float64(totalSeqLength)
 		totalGcPercent := totalGcRatio * 100
 
+		totalGcRatioNoAmbig := float64(totalGcCount) / float64(totalSeqLength-(totalNonATGCNBases+totalNBases))
+		totalGcPercentNoAmbig := totalGcRatioNoAmbig * 100
+
 		meanQualityPerSeq := float64(sumMeanQualityScores) / float64(totalSeqs)
 		meanErrorProbPerSeq := float64(sumMeanErrorProbs) / float64(totalSeqs)
 
@@ -175,7 +198,10 @@ specified.`,
 		fmt.Fprintf(summaryOut, "\nSUMMARY\n"+sep)
 		fmt.Fprintf(summaryOut, "Total Seqs (#): %23d\n", totalSeqs)
 		fmt.Fprintf(summaryOut, "Total Length (bp): %20d\n", totalSeqLength)
-		fmt.Fprintf(summaryOut, "Overall GC Content (%%): %15.2f\n", totalGcPercent)
+		fmt.Fprintf(summaryOut, "GC Content (%%): %23.2f\n", totalGcPercent)
+		fmt.Fprintf(summaryOut, "GC Content (%%, no ambig): %13.2f\n", totalGcPercentNoAmbig)
+		fmt.Fprintf(summaryOut, "N bases (#): %26d\n", totalNBases)
+		fmt.Fprintf(summaryOut, "Non-ATGCN bases (#): %18d\n", totalNonATGCNBases)
 		fmt.Fprintf(summaryOut, "Shortest (bp): %24d\n", seqLens[0])
 		fmt.Fprintf(summaryOut, "Longest (bp): %25d\n", seqLens[len(seqLens)-1])
 		fmt.Fprintf(summaryOut, "N80 (bp): %29d\n", nxx[80])
