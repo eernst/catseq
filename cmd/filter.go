@@ -5,6 +5,8 @@ import (
 	"fmt"
 	//"log"
 	"os"
+	"runtime"
+	"sync"
 	"time"
 
 	"github.com/eernst/catseq/seqmath"
@@ -82,6 +84,61 @@ func passesFilters(s seq.Sequence, flags *pflag.FlagSet) bool {
 	return true
 }
 
+func channelSeq(seqsIn *seqio.Scanner) <-chan seq.Sequence {
+	out := make(chan seq.Sequence)
+	go func() {
+		for seqsIn.Next() {
+			out <- seqsIn.Seq()
+		}
+		close(out)
+	}()
+	return out
+}
+
+func filterSeq(in <-chan seq.Sequence, flags *pflag.FlagSet) <-chan seq.Sequence {
+	out := make(chan seq.Sequence)
+	go func() {
+		for seq := range in {
+			if passesFilters(seq, flags) {
+				if DEBUG {
+					fmt.Fprintf(os.Stderr, "PASSED FILTER   Acc: %s		Length: %d\n", seq.Name(), seq.Len())
+				}
+				out <- seq
+			}
+			out <- nil
+		}
+		close(out)
+	}()
+	return out
+}
+
+// Copied from https://blog.golang.org/pipelines
+func merge(cs ...<-chan seq.Sequence) chan seq.Sequence {
+	var wg sync.WaitGroup
+	out := make(chan seq.Sequence)
+
+	// Start an output goroutine for each input channel in cs.  output
+	// copies values from c to out until c is closed, then calls wg.Done.
+	output := func(c <-chan seq.Sequence) {
+		for n := range c {
+			out <- n
+		}
+		wg.Done()
+	}
+	wg.Add(len(cs))
+	for _, c := range cs {
+		go output(c)
+	}
+
+	// Start a goroutine to close out once all the output goroutines are
+	// done.  This must start after the wg.Add call.
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+	return out
+}
+
 var filterCmd = &cobra.Command{
 	Use:   "filter SEQUENCE_FILE",
 	Short: "Filter sequences from (multi-)sequence files.",
@@ -153,13 +210,15 @@ specified.`,
 		// TODO: request addition of Flush() to biogo's writers
 		defer underWriter.Flush()
 
-		for seqsIn.Next() {
-			seq := seqsIn.Seq()
+		inStream := channelSeq(seqsIn)
 
-			if passesFilters(seq, flags) {
-				if DEBUG {
-					fmt.Fprintf(os.Stderr, "PASSED FILTER   Acc: %s		Length: %d\n", seq.Name(), seq.Len())
-				}
+		processors := make([]<-chan seq.Sequence, runtime.GOMAXPROCS(0))
+		for p := range processors {
+			processors[p] = filterSeq(inStream, flags)
+		}
+
+		for seq := range merge(processors...) {
+			if seq != nil {
 				writer.Write(seq)
 			}
 		}
