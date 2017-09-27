@@ -1,22 +1,34 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"os"
+	"runtime"
 	"sort"
-	//"strings"
+	"sync"
 	"time"
 
+	"github.com/eernst/catseq/pipeline"
 	"github.com/eernst/catseq/seqmath"
 
-	"github.com/biogo/biogo/alphabet"
-	"github.com/biogo/biogo/io/seqio"
-	"github.com/biogo/biogo/io/seqio/fasta"
-	"github.com/biogo/biogo/io/seqio/fastq"
-	"github.com/biogo/biogo/seq/linear"
+	"github.com/shenwei356/bio/seq"
+	"github.com/shenwei356/bio/seqio/fastx"
+
 	"github.com/spf13/cobra"
 )
+
+type InfoRecord struct {
+	Record        *fastx.Record
+	GcBases       int
+	AtBases       int
+	NonATGCNBases int
+	NBases        int
+	GcRatio       float64
+	MeanBaseQual  float64
+	MeanErrorProb float64
+	SumQ          int
+	SumErrorProbs float64
+}
 
 func init() {
 	RootCmd.AddCommand(infoCmd)
@@ -24,6 +36,93 @@ func init() {
 	infoCmd.Flags().BoolP("fasta", "", false, "Input is in FASTA format.")
 	infoCmd.Flags().BoolP("fastq", "", false, "Input is in FASTQ format.")
 	infoCmd.Flags().BoolP("summary", "s", false, "Only output summary info for all sequences.")
+}
+
+func infoSeq(in <-chan *fastx.Record) <-chan *InfoRecord {
+	out := make(chan *InfoRecord)
+	go func() {
+		for rec := range in {
+			s := rec.Seq
+			//gcRatio := s.GC()
+
+			seqStr := string(s.Seq)
+			var gcBases int = 0
+			var atBases int = 0
+			var nonATGCNBases int = 0
+			var nBases int = 0
+			for _, char := range seqStr {
+				switch char {
+				case 'C', 'c', 'G', 'g', 'S', 's':
+					gcBases++
+				case 'A', 'a', 'T', 't', 'W', 'w':
+					atBases++
+				case 'N':
+					nBases++
+				default:
+					nonATGCNBases++
+				}
+			}
+
+			gcRatio := float64(gcBases) / float64(s.Length()-(nonATGCNBases+nBases))
+
+			var qualScores int = 0
+			var errorProbs float64 = 0
+			var meanBaseQual float64
+			var meanErrorProb float64
+
+			if len(s.Qual) > 0 {
+				if len(s.QualValue) <= 0 {
+					vals, err := seq.QualityValue(seq.Sanger, s.Qual)
+					s.QualValue = vals
+					check(err)
+				}
+
+				for _, score := range s.QualValue {
+					qualScores += score
+					errorProbs += seqmath.ErrorProbForQ(score)
+
+					meanBaseQual = float64(qualScores) / float64(s.Length())
+					meanErrorProb = float64(errorProbs) / float64(s.Length())
+				}
+			}
+
+			infoRec := &InfoRecord{
+				Record:        rec,
+				GcBases:       gcBases,
+				AtBases:       atBases,
+				NonATGCNBases: nonATGCNBases,
+				NBases:        nBases,
+				GcRatio:       gcRatio,
+				MeanBaseQual:  meanBaseQual,
+				MeanErrorProb: meanErrorProb,
+				SumQ:          qualScores,
+				SumErrorProbs: errorProbs}
+
+			out <- infoRec
+		}
+		close(out)
+	}()
+	return out
+}
+
+func mergeInfoRec(chans ...<-chan *InfoRecord) chan *InfoRecord {
+	var wg sync.WaitGroup
+	out := make(chan *InfoRecord)
+	output := func(c <-chan *InfoRecord) {
+		for n := range c {
+			out <- n
+		}
+		wg.Done()
+	}
+	wg.Add(len(chans))
+	for _, c := range chans {
+		go output(c)
+	}
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+	return out
 }
 
 var infoCmd = &cobra.Command{
@@ -52,8 +151,8 @@ specified.`,
 		var seqsInFileName string
 
 		if len(args) < 1 {
-			// TODO: Can we check if there's something actually coming in on STDIN?
-			seqsInFileName = "/dev/stdin"
+			// TODO: Check here for valid sequence on stdin
+			seqsInFileName = "-"
 			fmt.Fprintf(os.Stderr, "No input sequence file given. Reading from STDIN.\n")
 		} else {
 			seqsInFileName = args[0]
@@ -62,118 +161,60 @@ specified.`,
 			fmt.Fprintf(os.Stderr, "args[0] is %q\n", args[0])
 		}
 
-		var seqsInFormat string
-		isFasta, err := flags.GetBool("fasta")
+		seq.ValidateSeq = false
+		reader, err := fastx.NewDefaultReader(seqsInFileName)
 		check(err)
-		isFastq, err := flags.GetBool("fastq")
-		check(err)
-		if isFasta {
-			seqsInFormat = FastaFormat
-		} else if isFastq {
-			seqsInFormat = FastqFormat
-		} else {
-			seqsInFormat, err = GuessFileFormat(seqsInFileName)
-		}
-		check(err)
-
-		seqsInFile, err := os.Open(seqsInFileName)
-		check(err)
-		defer seqsInFile.Close()
-
-		var seqsIn *seqio.Scanner
-		switch seqsInFormat {
-		case FastaFormat:
-			seqsIn = seqio.NewScanner(
-				fasta.NewReader(bufio.NewReader(seqsInFile), linear.NewSeq("", nil, alphabet.DNAredundant)))
-		case FastqFormat:
-			seqsIn = seqio.NewScanner(
-				fastq.NewReader(bufio.NewReader(seqsInFile), linear.NewQSeq("", nil, alphabet.DNAredundant, alphabet.Sanger)))
-		case UnknownFormat:
-			fmt.Fprintf(os.Stderr, "Unknown input sequence file format.")
-			os.Exit(1)
-		}
 
 		if PrintHeader {
 			fmt.Fprintf(os.Stdout, "accession\tlength\tgc-content\tmean quality\tmean P(error)\t\n")
 		}
 
-		totalSeqs := 0
-		totalGcCount := 0
-		totalSeqLength := 0
-		totalNonATGCNBases := 0
-		totalNBases := 0
+		inStream := pipeline.ChannelRec(reader)
+
+		processors := make([]<-chan *InfoRecord, runtime.GOMAXPROCS(0))
+		for p := range processors {
+			processors[p] = infoSeq(inStream)
+		}
+
+		var totalSeqs int
+		var totalGcCount int
+		var totalSeqLength int
+		var totalNonATGCNBases int
+		var totalNBases int
 		var sumBaseQualityScores int
 		var sumMeanQualityScores float64
 		var sumBaseErrorProbs float64
 		var sumMeanErrorProbs float64
 		var seqLens []int
 
-		for seqsIn.Next() {
-			s := seqsIn.Seq()
+		for infoRec := range mergeInfoRec(processors...) {
+			if infoRec != nil {
 
-			var seqBytes []byte = make([]byte, s.Len())
+				rec := infoRec.Record
 
-			qualScores := 0
-			errorProbs := float64(0)
-			switch s.(type) {
-			case *linear.QSeq:
-				for i, ql := range s.(*linear.QSeq).Seq {
-					seqBytes[i] = byte(ql.L)
-					qualScores += int(ql.Q)
-					errorProbs += seqmath.ErrorProbForQ(int(ql.Q))
-				}
-			case *linear.Seq:
-				for i, l := range s.(*linear.Seq).Seq {
-					seqBytes[i] = byte(l)
-				}
-			}
+				// Print per-read info
+				if !summaryOnly {
+					fmt.Fprintf(os.Stdout, "%s\t%d\t%.2f", rec.Name, rec.Seq.Length(), infoRec.GcRatio*100)
 
-			seqStr := string(seqBytes)
-			gcBases := 0
-			atBases := 0
-			nonATGCNBases := 0
-			nBases := 0
-			for _, char := range seqStr {
-				switch char {
-				case 'C', 'c', 'G', 'g':
-					gcBases++
-				case 'A', 'a', 'T', 't':
-					atBases++
-				case 'N':
-					nBases++
-				default:
-					nonATGCNBases++
-				}
-			}
-			//gcRatio := float64(gcCount) / float64(s.Len())
-			gcRatio := float64(gcBases) / float64(s.Len()-(nonATGCNBases+nBases))
-			gcPercent := gcRatio * 100
+					if reader.IsFastq {
+						fmt.Fprintf(os.Stdout, "\t%.2f\t%.4f", infoRec.MeanBaseQual, infoRec.MeanErrorProb)
+					}
 
-			totalSeqs += 1
-			totalGcCount += gcBases
-			totalSeqLength += s.Len()
-			totalNonATGCNBases += nonATGCNBases
-			totalNBases += nBases
-
-			meanBaseQual := float64(qualScores) / float64(s.Len())
-			meanErrorProb := float64(errorProbs) / float64(s.Len())
-			sumMeanQualityScores += meanBaseQual
-			sumMeanErrorProbs += meanErrorProb
-
-			sumBaseErrorProbs += errorProbs
-			sumBaseQualityScores += qualScores
-
-			seqLens = append(seqLens, s.Len())
-
-			// Print per-read info
-			if !summaryOnly {
-				fmt.Fprintf(os.Stdout, "%s\t%d\t%.2f", s.Name(), s.Len(), gcPercent)
-
-				if seqsInFormat == "fastq" {
-					fmt.Fprintf(os.Stdout, "\t%.2f\t%.4f", meanBaseQual, meanErrorProb)
+					fmt.Fprintf(os.Stdout, "\n")
 				}
 
-				fmt.Fprintf(os.Stdout, "\n")
+				totalSeqs += 1
+				totalGcCount += infoRec.GcBases
+				totalSeqLength += rec.Seq.Length()
+				totalNonATGCNBases += infoRec.NonATGCNBases
+				totalNBases += infoRec.NBases
+				sumMeanQualityScores += infoRec.MeanBaseQual
+				sumMeanErrorProbs += infoRec.MeanErrorProb
+
+				sumBaseQualityScores += infoRec.SumQ
+				sumBaseErrorProbs += infoRec.SumErrorProbs
+
+				seqLens = append(seqLens, rec.Seq.Length())
 			}
 		}
 
@@ -208,7 +249,7 @@ specified.`,
 		fmt.Fprintf(summaryOut, "N50 (bp): %29d\n", nxx[50])
 		fmt.Fprintf(summaryOut, "N20 (bp): %29d\n", nxx[20])
 		// Would be better to test the Sequence for quality info
-		if seqsInFormat == "fastq" {
+		if reader.IsFastq {
 			fmt.Fprintf(summaryOut, "\nPER-SEQ\n"+sep)
 			fmt.Fprintf(summaryOut, "Mean Phred quality score: %13.2f\n", meanQualityPerSeq)
 			fmt.Fprintf(summaryOut, "Mean error rate: %22.4f\n", meanErrorProbPerSeq)

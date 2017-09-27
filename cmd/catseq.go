@@ -49,6 +49,7 @@ var cfgFile string
 var Verbose bool
 var PrintHeader bool
 var NumProcs int
+var LineWrap int
 
 const (
 	// Supported sequence file formats
@@ -124,19 +125,18 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	// Here you will define your flags and configuration settings.
-	// Cobra supports Persistent Flags, which, if defined here,
-	// will be global for your application.
-
+	// Persistent flags are application-global
 	//RootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.catseq.yaml)")
 	RootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "", false, "Enable verbose output.")
 	RootCmd.PersistentFlags().BoolVarP(&PrintHeader, "print-header", "", false, "Include column header in output.")
 	//RootCmd.PersistentFlags().IntVarP(&NumProcs, "procs", "p", 1, "Use up to this many processors/cores in parallel.")
 	RootCmd.PersistentFlags().StringVarP(&MemProfileFileName, "memprofile", "", "", "Write a memory profile to this file.")
 	RootCmd.PersistentFlags().StringVarP(&CpuProfileFileName, "cpuprofile", "", "", "Write a CPU profile to this file.")
+	RootCmd.PersistentFlags().BoolP("fasta", "", false, "Input is in FASTA format.")
+	RootCmd.PersistentFlags().BoolP("fastq", "", false, "Input is in FASTQ format.")
+	RootCmd.PersistentFlags().IntVarP(&LineWrap, "wrap", "w", 0, "Wrap FASTA/FASTQ lines at this length.")
 
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
+	// Local flags are just for this action (bare "catseq")
 	RootCmd.Flags().BoolP("help", "h", false, "Show this help message.")
 
 	flag.Usage = func() {

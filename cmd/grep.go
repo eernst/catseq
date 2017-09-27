@@ -1,17 +1,17 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"regexp"
+	"runtime"
 	"time"
 
-	"github.com/biogo/biogo/alphabet"
-	"github.com/biogo/biogo/io/seqio"
-	"github.com/biogo/biogo/io/seqio/fasta"
-	"github.com/biogo/biogo/io/seqio/fastq"
-	"github.com/biogo/biogo/seq/linear"
+	"github.com/eernst/catseq/pipeline"
+
+	"github.com/shenwei356/bio/seq"
+	"github.com/shenwei356/bio/seqio/fastx"
+	"github.com/shenwei356/xopen"
 
 	"github.com/spf13/cobra"
 )
@@ -33,6 +33,62 @@ func init() {
 	grepCmd.Flags().StringP("field", "f", "header", "Which field to match the pattern against. One of \"header\",\"seq\", or \"both\".")
 	grepCmd.Flags().BoolP("invert-match", "v", false, "Selected lines are those not matching any of the specified patterns.")
 	grepCmd.Flags().BoolP("ignore-case", "i", false, "Perform case insensitive matching.")
+}
+
+func grepRecs(in <-chan *fastx.Record, regex *regexp.Regexp, grepField string) <-chan *fastx.Record {
+	out := make(chan *fastx.Record)
+	go func() {
+		for rec := range in {
+			if DEBUG {
+				fmt.Fprintf(os.Stderr, "Matching %v against field %v containing %v ... ", regex.String(), grepField, rec.Name)
+			}
+
+			switch grepField {
+			case HeaderField:
+				if regex.Match(rec.Name) != invert {
+					if DEBUG {
+						fmt.Fprintf(os.Stderr, "Matched!\n")
+					}
+					out <- rec
+				} else {
+					if DEBUG {
+						fmt.Fprintf(os.Stderr, "No match!\n")
+					}
+					out <- nil
+				}
+			case SeqField:
+				if regex.Match(rec.Seq.Seq) != invert {
+					if DEBUG {
+						fmt.Fprintf(os.Stderr, "Matched!\n")
+					}
+					out <- rec
+				} else {
+					if DEBUG {
+						fmt.Fprintf(os.Stderr, "No match!\n")
+					}
+					out <- nil
+				}
+			case BothFields:
+				if (regex.Match(rec.Name) || regex.Match(rec.Seq.Seq)) != invert {
+					if DEBUG {
+						fmt.Fprintf(os.Stderr, "Matched!\n")
+					}
+					out <- rec
+				} else {
+					if DEBUG {
+						fmt.Fprintf(os.Stderr, "No match!\n")
+					}
+					out <- nil
+				}
+			default:
+				fmt.Fprintf(os.Stderr, "Error: Unknown grep field.")
+				os.Exit(1)
+			}
+
+		}
+		close(out)
+	}()
+	return out
 }
 
 var grepCmd = &cobra.Command{
@@ -73,8 +129,8 @@ specified.
 			os.Exit(1)
 		case len(args) == 1:
 			pattern = args[0]
-			// Anything coming in on stdin?
-			seqsInFileName = "/dev/stdin"
+			// TODO: Check here for valid sequence on stdin
+			seqsInFileName = "-"
 			fmt.Fprintf(os.Stderr, "No input sequence file given. Reading from STDIN.\n")
 		case len(args) == 2:
 			pattern = args[0]
@@ -96,122 +152,27 @@ specified.
 		regex, err := regexp.Compile(pattern)
 		check(err)
 
-		var seqsInFormat string
-		flagFasta, err := flags.GetBool("fasta")
+		seq.ValidateSeq = false
+		reader, err := fastx.NewDefaultReader(seqsInFileName)
 		check(err)
-		flagFastq, err := flags.GetBool("fastq")
-		check(err)
-		if flagFasta {
-			seqsInFormat = FastaFormat
-		} else if flagFastq {
-			seqsInFormat = FastqFormat
-		} else {
-			seqsInFormat, err = GuessFileFormat(seqsInFileName)
-		}
-		check(err)
-		if DEBUG {
-			fmt.Fprintf(os.Stderr, "seqsInFormat: %v\n", seqsInFormat)
-		}
 
-		seqsInFile, err := os.Open(seqsInFileName)
+		writer, err := xopen.Wopen("-") // "-" for STDOUT
 		check(err)
-		defer seqsInFile.Close()
-
-		var seqsIn *seqio.Scanner
-		var underWriter *bufio.Writer
-		var writer seqio.Writer
-		switch seqsInFormat {
-		case FastaFormat:
-			seqsIn = seqio.NewScanner(
-				fasta.NewReader(bufio.NewReader(seqsInFile), linear.NewSeq("", nil, alphabet.DNA)))
-			underWriter = bufio.NewWriter(os.Stdout)
-			writer = fasta.NewWriter(underWriter, MaxInt)
-			defer underWriter.Flush()
-		case FastqFormat:
-			seqsIn = seqio.NewScanner(
-				fastq.NewReader(bufio.NewReader(seqsInFile), linear.NewQSeq("", nil, alphabet.DNA, alphabet.Sanger)))
-			writer = fastq.NewWriter(bufio.NewWriter(os.Stdout))
-		case UnknownFormat:
-			fmt.Fprintf(os.Stderr, "Unknown input sequence file format.\n")
-			os.Exit(1)
-		}
+		defer writer.Close()
 
 		grepField, err = flags.GetString("field")
 		check(err)
-		switch grepField {
-		case HeaderField:
-			for seqsIn.Next() {
-				seq := seqsIn.Seq()
 
-				if DEBUG {
-					fmt.Fprintf(os.Stderr, "Matching %v against field %v containing %v%v ... ", pattern, grepField, seq.Name(), seq.Description())
-				}
-
-				if (regex.MatchString(seq.Name()) || regex.MatchString(seq.Description())) != invert {
-					bytesWritten, err := writer.Write(seq)
-					check(err)
-
-					if DEBUG {
-						fmt.Fprintf(os.Stderr, "Matched!\n")
-						fmt.Fprintf(os.Stderr, "Wrote %v bytes.\n", bytesWritten)
-					}
-
-				} else {
-					if DEBUG {
-						fmt.Fprintf(os.Stderr, "No match!\n")
-					}
-				}
+		// Using the pipeline pattern
+		inStream := pipeline.ChannelRec(reader)
+		processors := make([]<-chan *fastx.Record, runtime.GOMAXPROCS(0))
+		for p := range processors {
+			processors[p] = grepRecs(inStream, regex, grepField)
+		}
+		for record := range pipeline.MergeRec(processors...) {
+			if record != nil {
+				record.FormatToWriter(writer, 0)
 			}
-		case SeqField:
-			for seqsIn.Next() {
-				seq := seqsIn.Seq()
-
-				if DEBUG {
-					fmt.Fprintf(os.Stderr, "Matching %v against field %v containing %v%v ... ", pattern, grepField, seq.Name(), seq.Description())
-				}
-
-				if (regex.Match(alphabet.LettersToBytes(seq.(*linear.Seq).Seq))) != invert {
-					bytesWritten, err := writer.Write(seq)
-					check(err)
-
-					if DEBUG {
-						fmt.Fprintf(os.Stderr, "Matched!\n")
-						fmt.Fprintf(os.Stderr, "Wrote %v bytes.\n", bytesWritten)
-					}
-
-				} else {
-					if DEBUG {
-						fmt.Fprintf(os.Stderr, "No match!\n")
-					}
-				}
-			}
-		case BothFields:
-			for seqsIn.Next() {
-				seq := seqsIn.Seq()
-
-				if DEBUG {
-					fmt.Fprintf(os.Stderr, "Matching %v against field %v containing %v%v ... ", pattern, grepField, seq.Name(), seq.Description())
-				}
-
-				if (regex.MatchString(seq.Name()) || regex.MatchString(seq.Description())) != invert ||
-					regex.Match(alphabet.LettersToBytes(seq.(*linear.Seq).Seq)) {
-					bytesWritten, err := writer.Write(seq)
-					check(err)
-
-					if DEBUG {
-						fmt.Fprintf(os.Stderr, "Matched!\n")
-						fmt.Fprintf(os.Stderr, "Wrote %v bytes.\n", bytesWritten)
-					}
-
-				} else {
-					if DEBUG {
-						fmt.Fprintf(os.Stderr, "No match!\n")
-					}
-				}
-			}
-		default:
-			fmt.Fprintf(os.Stderr, "Error: Unknown grep field.")
-			os.Exit(1)
 		}
 
 		time.Sleep(0 * time.Millisecond)
