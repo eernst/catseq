@@ -80,10 +80,10 @@ func infoSeq(in <-chan fastx.RecordChunk) <-chan *InfoRecord {
 					for _, score := range s.QualValue {
 						qualScores += score
 						errorProbs += seqmath.ErrorProbForQ(score)
-
-						meanBaseQual = float64(qualScores) / float64(length)
-						meanErrorProb = float64(errorProbs) / float64(length)
 					}
+
+					meanBaseQual = float64(qualScores) / float64(length)
+					meanErrorProb = float64(errorProbs) / float64(length)
 				}
 
 				infoRec := &InfoRecord{
