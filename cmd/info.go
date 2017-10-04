@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/eernst/catseq/pipeline"
+	//"github.com/eernst/catseq/pipeline"
 	"github.com/eernst/catseq/seqmath"
 
 	"github.com/shenwei356/bio/seq"
@@ -32,73 +32,74 @@ type InfoRecord struct {
 
 func init() {
 	RootCmd.AddCommand(infoCmd)
-
 	infoCmd.Flags().BoolP("fasta", "", false, "Input is in FASTA format.")
 	infoCmd.Flags().BoolP("fastq", "", false, "Input is in FASTQ format.")
 	infoCmd.Flags().BoolP("summary", "s", false, "Only output summary info for all sequences.")
 }
 
-func infoSeq(in <-chan *fastx.Record) <-chan *InfoRecord {
+func infoSeq(in <-chan fastx.RecordChunk) <-chan *InfoRecord {
 	out := make(chan *InfoRecord)
 	go func() {
-		for rec := range in {
-			s := rec.Seq
-			//gcRatio := s.GC()
+		for chunk := range in {
+			for _, rec := range chunk.Data {
+				s := rec.Seq
+				//gcRatio := s.GC()
 
-			seqStr := string(s.Seq)
-			var gcBases int = 0
-			var atBases int = 0
-			var nonATGCNBases int = 0
-			var nBases int = 0
-			for _, char := range seqStr {
-				switch char {
-				case 'C', 'c', 'G', 'g', 'S', 's':
-					gcBases++
-				case 'A', 'a', 'T', 't', 'W', 'w':
-					atBases++
-				case 'N':
-					nBases++
-				default:
-					nonATGCNBases++
+				seqStr := string(s.Seq)
+				var gcBases int = 0
+				var atBases int = 0
+				var nonATGCNBases int = 0
+				var nBases int = 0
+				for _, char := range seqStr {
+					switch char {
+					case 'C', 'c', 'G', 'g', 'S', 's':
+						gcBases++
+					case 'A', 'a', 'T', 't', 'W', 'w':
+						atBases++
+					case 'N':
+						nBases++
+					default:
+						nonATGCNBases++
+					}
 				}
+
+				gcRatio := float64(gcBases) / float64(s.Length()-(nonATGCNBases+nBases))
+
+				var qualScores int = 0
+				var errorProbs float64 = 0
+				var meanBaseQual float64
+				var meanErrorProb float64
+
+				if len(s.Qual) > 0 {
+					if len(s.QualValue) <= 0 {
+						vals, err := seq.QualityValue(seq.Sanger, s.Qual)
+						s.QualValue = vals
+						check(err)
+					}
+
+					for _, score := range s.QualValue {
+						qualScores += score
+						errorProbs += seqmath.ErrorProbForQ(score)
+
+						meanBaseQual = float64(qualScores) / float64(s.Length())
+						meanErrorProb = float64(errorProbs) / float64(s.Length())
+					}
+				}
+
+				infoRec := &InfoRecord{
+					Record:        rec,
+					GcBases:       gcBases,
+					AtBases:       atBases,
+					NonATGCNBases: nonATGCNBases,
+					NBases:        nBases,
+					GcRatio:       gcRatio,
+					MeanBaseQual:  meanBaseQual,
+					MeanErrorProb: meanErrorProb,
+					SumQ:          qualScores,
+					SumErrorProbs: errorProbs}
+
+				out <- infoRec
 			}
-
-			gcRatio := float64(gcBases) / float64(s.Length()-(nonATGCNBases+nBases))
-
-			var qualScores int = 0
-			var errorProbs float64 = 0
-			var meanBaseQual float64
-			var meanErrorProb float64
-
-			if len(s.Qual) > 0 {
-				if len(s.QualValue) <= 0 {
-					vals, err := seq.QualityValue(seq.Sanger, s.Qual)
-					s.QualValue = vals
-					check(err)
-				}
-
-				for _, score := range s.QualValue {
-					qualScores += score
-					errorProbs += seqmath.ErrorProbForQ(score)
-
-					meanBaseQual = float64(qualScores) / float64(s.Length())
-					meanErrorProb = float64(errorProbs) / float64(s.Length())
-				}
-			}
-
-			infoRec := &InfoRecord{
-				Record:        rec,
-				GcBases:       gcBases,
-				AtBases:       atBases,
-				NonATGCNBases: nonATGCNBases,
-				NBases:        nBases,
-				GcRatio:       gcRatio,
-				MeanBaseQual:  meanBaseQual,
-				MeanErrorProb: meanErrorProb,
-				SumQ:          qualScores,
-				SumErrorProbs: errorProbs}
-
-			out <- infoRec
 		}
 		close(out)
 	}()
@@ -169,16 +170,15 @@ specified.`,
 			fmt.Fprintf(os.Stdout, "accession\tlength\tgc-content\tmean quality\tmean P(error)\t\n")
 		}
 
-		inStream := pipeline.ChannelRec(reader)
-
+		chunkStream := reader.ChunkChan(runtime.GOMAXPROCS(0), 1<<8)
 		processors := make([]<-chan *InfoRecord, runtime.GOMAXPROCS(0))
 		for p := range processors {
-			processors[p] = infoSeq(inStream)
+			processors[p] = infoSeq(chunkStream)
 		}
 
 		var totalSeqs int
-		var totalGcCount int
 		var totalSeqLength int
+		var totalGcCount int
 		var totalNonATGCNBases int
 		var totalNBases int
 		var sumBaseQualityScores int
@@ -230,9 +230,8 @@ specified.`,
 		meanQualityPerBase := float64(sumBaseQualityScores) / float64(totalSeqLength)
 		meanErrorProbPerBase := float64(sumBaseErrorProbs) / float64(totalSeqLength)
 
-		sort.Ints(seqLens)
-
 		// NXX Calc
+		sort.Ints(seqLens)
 		var nxx []int = seqmath.Nxx(seqLens, totalSeqLength)
 
 		const sep string = "--------------------\n"
