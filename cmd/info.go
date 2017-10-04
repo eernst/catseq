@@ -43,14 +43,13 @@ func infoSeq(in <-chan fastx.RecordChunk) <-chan *InfoRecord {
 		for chunk := range in {
 			for _, rec := range chunk.Data {
 				s := rec.Seq
-				//gcRatio := s.GC()
 
-				seqStr := string(s.Seq)
 				var gcBases int = 0
 				var atBases int = 0
 				var nonATGCNBases int = 0
 				var nBases int = 0
-				for _, char := range seqStr {
+
+				for _, char := range s.Seq {
 					switch char {
 					case 'C', 'c', 'G', 'g', 'S', 's':
 						gcBases++
