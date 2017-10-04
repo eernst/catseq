@@ -63,7 +63,7 @@ func infoSeq(in <-chan fastx.RecordChunk) <-chan *InfoRecord {
 					}
 				}
 
-				gcRatio := float64(gcBases / (length - (nonATGCNBases + nBases)))
+				gcRatio := float64(gcBases) / float64(length-(nonATGCNBases+nBases))
 
 				var qualScores int = 0
 				var errorProbs float64 = 0
@@ -81,7 +81,7 @@ func infoSeq(in <-chan fastx.RecordChunk) <-chan *InfoRecord {
 						qualScores += score
 						errorProbs += seqmath.ErrorProbForQ(score)
 
-						meanBaseQual = float64(qualScores / length)
+						meanBaseQual = float64(qualScores) / float64(length)
 						meanErrorProb = float64(errorProbs) / float64(length)
 					}
 				}
@@ -220,16 +220,16 @@ specified.`,
 			}
 		}
 
-		totalGcRatio := float64(totalGcCount / totalSeqLength)
+		totalGcRatio := float64(totalGcCount) / float64(totalSeqLength)
 		totalGcPercent := totalGcRatio * 100
 
-		totalGcRatioNoAmbig := float64(totalGcCount / (totalSeqLength - (totalNonATGCNBases + totalNBases)))
+		totalGcRatioNoAmbig := float64(totalGcCount) / float64(totalSeqLength-(totalNonATGCNBases+totalNBases))
 		totalGcPercentNoAmbig := totalGcRatioNoAmbig * 100
 
 		meanQualityPerSeq := float64(sumMeanQualityScores) / float64(totalSeqs)
 		meanErrorProbPerSeq := float64(sumMeanErrorProbs) / float64(totalSeqs)
 
-		meanQualityPerBase := float64(sumBaseQualityScores / totalSeqLength)
+		meanQualityPerBase := float64(sumBaseQualityScores) / float64(totalSeqLength)
 		meanErrorProbPerBase := float64(sumBaseErrorProbs) / float64(totalSeqLength)
 
 		// NXX Calc
