@@ -43,6 +43,7 @@ func infoSeq(in <-chan fastx.RecordChunk) <-chan *InfoRecord {
 		for chunk := range in {
 			for _, rec := range chunk.Data {
 				s := rec.Seq
+				length := s.Length()
 
 				var gcBases int = 0
 				var atBases int = 0
@@ -62,7 +63,7 @@ func infoSeq(in <-chan fastx.RecordChunk) <-chan *InfoRecord {
 					}
 				}
 
-				gcRatio := float64(gcBases / (s.Length() - (nonATGCNBases + nBases)))
+				gcRatio := float64(gcBases / (length - (nonATGCNBases + nBases)))
 
 				var qualScores int = 0
 				var errorProbs float64 = 0
@@ -80,8 +81,8 @@ func infoSeq(in <-chan fastx.RecordChunk) <-chan *InfoRecord {
 						qualScores += score
 						errorProbs += seqmath.ErrorProbForQ(score)
 
-						meanBaseQual = float64(qualScores / s.Length())
-						meanErrorProb = float64(errorProbs) / float64(s.Length())
+						meanBaseQual = float64(qualScores / length)
+						meanErrorProb = float64(errorProbs) / float64(length)
 					}
 				}
 
@@ -190,10 +191,12 @@ specified.`,
 			if infoRec != nil {
 
 				rec := infoRec.Record
+				s := rec.Seq
+				length := s.Length()
 
 				// Print per-read info
 				if !summaryOnly {
-					fmt.Fprintf(os.Stdout, "%s\t%d\t%.2f", rec.Name, rec.Seq.Length(), infoRec.GcRatio*100)
+					fmt.Fprintf(os.Stdout, "%s\t%d\t%.2f", rec.Name, length, infoRec.GcRatio*100)
 
 					if reader.IsFastq {
 						fmt.Fprintf(os.Stdout, "\t%.2f\t%.4f", infoRec.MeanBaseQual, infoRec.MeanErrorProb)
@@ -204,7 +207,7 @@ specified.`,
 
 				totalSeqs += 1
 				totalGcCount += infoRec.GcBases
-				totalSeqLength += rec.Seq.Length()
+				totalSeqLength += length
 				totalNonATGCNBases += infoRec.NonATGCNBases
 				totalNBases += infoRec.NBases
 				sumMeanQualityScores += infoRec.MeanBaseQual
@@ -213,7 +216,7 @@ specified.`,
 				sumBaseQualityScores += infoRec.SumQ
 				sumBaseErrorProbs += infoRec.SumErrorProbs
 
-				seqLens = append(seqLens, rec.Seq.Length())
+				seqLens = append(seqLens, length)
 			}
 		}
 
