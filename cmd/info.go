@@ -246,6 +246,8 @@ specified.`,
 		fmt.Fprintf(summaryOut, "Non-ATGCN bases (#): %18d\n", totalNonATGCNBases)
 		fmt.Fprintf(summaryOut, "Shortest (bp): %24d\n", seqLens[0])
 		fmt.Fprintf(summaryOut, "Longest (bp): %25d\n", seqLens[len(seqLens)-1])
+		fmt.Fprintf(summaryOut, "Mean (bp): %28d\n", totalSeqLength/totalSeqs)
+		fmt.Fprintf(summaryOut, "Median (bp): %26d\n", seqmath.Median(seqLens))
 		fmt.Fprintf(summaryOut, "N80 (bp): %29d\n", nxx[80])
 		fmt.Fprintf(summaryOut, "N50 (bp): %29d\n", nxx[50])
 		fmt.Fprintf(summaryOut, "N20 (bp): %29d\n", nxx[20])
