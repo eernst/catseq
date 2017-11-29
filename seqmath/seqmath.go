@@ -48,9 +48,14 @@ func Nxx(seqLens []int, totalSeqLength int) (nxx []int) {
 
 func Median(seqLens []int) (median int) {
 	var n = len(seqLens)
-	if n&1 == 0 {
+
+	switch {
+	case n == 1:
+		return seqLens[0]
+	case n&1 == 0:
 		return seqLens[n/2-1]
-	} else {
+	default:
 		return ((seqLens[n/2] + seqLens[n/2-1]) / 2)
+
 	}
 }
