@@ -7,6 +7,7 @@ import (
 	"sort"
 	"sync"
 	"time"
+	"unicode"
 
 	//"github.com/eernst/catseq/pipeline"
 	"github.com/eernst/catseq/seqmath"
@@ -19,6 +20,8 @@ import (
 
 type InfoRecord struct {
 	Record        *fastx.Record
+	UcBases       int
+	LcBases       int
 	GcBases       int
 	AtBases       int
 	NonATGCNBases int
@@ -45,19 +48,34 @@ func infoSeq(in <-chan fastx.RecordChunk) <-chan *InfoRecord {
 				s := rec.Seq
 				length := s.Length()
 
+				var ucBases int = 0
+				var lcBases int = 0
 				var gcBases int = 0
 				var atBases int = 0
 				var nonATGCNBases int = 0
 				var nBases int = 0
 
 				for _, char := range s.Seq {
+
+					if unicode.IsLower(rune(char)) {
+						lcBases++
+					} else {
+						ucBases++
+					}
+
 					switch char {
-					case 'C', 'c', 'G', 'g', 'S', 's':
+					case 'G', 'g', 'C', 'c':
 						gcBases++
-					case 'A', 'a', 'T', 't', 'W', 'w':
+					case 'A', 'a', 'T', 't':
 						atBases++
-					case 'N':
+					case 'N', 'n':
 						nBases++
+					case 'S', 's':
+						gcBases++
+						nonATGCNBases++
+					case 'W', 'w':
+						atBases++
+						nonATGCNBases++
 					default:
 						nonATGCNBases++
 					}
@@ -88,6 +106,8 @@ func infoSeq(in <-chan fastx.RecordChunk) <-chan *InfoRecord {
 
 				infoRec := &InfoRecord{
 					Record:        rec,
+					UcBases:       ucBases,
+					LcBases:       lcBases,
 					GcBases:       gcBases,
 					AtBases:       atBases,
 					NonATGCNBases: nonATGCNBases,
@@ -181,6 +201,7 @@ specified.`,
 		var totalGcCount int
 		var totalNonATGCNBases int
 		var totalNBases int
+		var totalLcBases int
 		var sumBaseQualityScores int
 		var sumMeanQualityScores float64
 		var sumBaseErrorProbs float64
@@ -205,11 +226,12 @@ specified.`,
 					fmt.Fprintf(os.Stdout, "\n")
 				}
 
-				totalSeqs += 1
+				totalSeqs++
 				totalGcCount += infoRec.GcBases
 				totalSeqLength += length
 				totalNonATGCNBases += infoRec.NonATGCNBases
 				totalNBases += infoRec.NBases
+				totalLcBases += infoRec.LcBases
 				sumMeanQualityScores += infoRec.MeanBaseQual
 				sumMeanErrorProbs += infoRec.MeanErrorProb
 
@@ -244,6 +266,7 @@ specified.`,
 		fmt.Fprintf(summaryOut, "GC Content (%%, no ambig): %13.2f\n", totalGcPercentNoAmbig)
 		fmt.Fprintf(summaryOut, "N bases (#): %26d\n", totalNBases)
 		fmt.Fprintf(summaryOut, "Non-ATGCN bases (#): %18d\n", totalNonATGCNBases)
+		fmt.Fprintf(summaryOut, "Softmasked bases (#): %17d\n", totalLcBases)
 		fmt.Fprintf(summaryOut, "Shortest (bp): %24d\n", seqLens[0])
 		fmt.Fprintf(summaryOut, "Longest (bp): %25d\n", seqLens[len(seqLens)-1])
 		fmt.Fprintf(summaryOut, "Mean (bp): %28d\n", totalSeqLength/totalSeqs)
