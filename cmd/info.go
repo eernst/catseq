@@ -271,9 +271,9 @@ specified.`,
 		fmt.Fprintf(summaryOut, "Longest (bp): %25d\n", seqLens[len(seqLens)-1])
 		fmt.Fprintf(summaryOut, "Mean (bp): %28d\n", totalSeqLength/totalSeqs)
 		fmt.Fprintf(summaryOut, "Median (bp): %26d\n", seqmath.Median(seqLens))
-		fmt.Fprintf(summaryOut, "N80 (bp): %29d\n", nxx[80])
-		fmt.Fprintf(summaryOut, "N50 (bp): %29d\n", nxx[50])
-		fmt.Fprintf(summaryOut, "N20 (bp): %29d\n", nxx[20])
+		for xx := 10; xx <= 90; xx += 10 {
+			fmt.Fprintf(summaryOut, "N%02d (bp): %29d\n", xx, nxx[xx])
+		}
 		// Would be better to test the Sequence for quality info
 		if reader.IsFastq {
 			fmt.Fprintf(summaryOut, "\nPER-SEQ\n"+sep)
