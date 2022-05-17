@@ -202,7 +202,7 @@ specified.`,
 		var totalNonATGCNBases int
 		var totalNBases int
 		var totalLcBases int
-		var sumBaseQualityScores int
+		var sumBaseQualityScores uint64
 		var sumMeanQualityScores float64
 		var sumBaseErrorProbs float64
 		var sumMeanErrorProbs float64
