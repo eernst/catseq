@@ -20,16 +20,16 @@ import (
 
 type InfoRecord struct {
 	Record        *fastx.Record
-	UcBases       uint64
-	LcBases       uint64
-	GcBases       uint64
-	AtBases       uint64
-	NonATGCNBases uint64
-	NBases        uint64
+	UcBases       int
+	LcBases       int
+	GcBases       int
+	AtBases       int
+	NonATGCNBases int
+	NBases        int
 	GcRatio       float64
 	MeanBaseQual  float64
 	MeanErrorProb float64
-	SumQ          uint64
+	SumQ          int
 	SumErrorProbs float64
 }
 
@@ -48,12 +48,12 @@ func infoSeq(in <-chan fastx.RecordChunk) <-chan *InfoRecord {
 				s := rec.Seq
 				length := s.Length()
 
-				var ucBases uint64 = 0
-				var lcBases uint64 = 0
-				var gcBases uint64 = 0
-				var atBases uint64 = 0
-				var nonATGCNBases uint64 = 0
-				var nBases uint64 = 0
+				var ucBases int = 0
+				var lcBases int = 0
+				var gcBases int = 0
+				var atBases int = 0
+				var nonATGCNBases int = 0
+				var nBases int = 0
 
 				for _, char := range s.Seq {
 
@@ -83,7 +83,7 @@ func infoSeq(in <-chan fastx.RecordChunk) <-chan *InfoRecord {
 
 				gcRatio := float64(gcBases) / float64(length-(nonATGCNBases+nBases))
 
-				var qualScores uint64 = 0
+				var qualScores int = 0
 				var errorProbs float64 = 0
 				var meanBaseQual float64
 				var meanErrorProb float64
@@ -196,17 +196,17 @@ specified.`,
 			processors[p] = infoSeq(chunkStream)
 		}
 
-		var totalSeqs uint64
-		var totalSeqLength uint64
-		var totalGcCount uint64
-		var totalNonATGCNBases uint64
-		var totalNBases uint64
-		var totalLcBases uint64
+		var totalSeqs int
+		var totalSeqLength int
+		var totalGcCount int
+		var totalNonATGCNBases int
+		var totalNBases int
+		var totalLcBases int
 		var sumBaseQualityScores uint64
 		var sumMeanQualityScores float64
 		var sumBaseErrorProbs float64
 		var sumMeanErrorProbs float64
-		var seqLens []uint64
+		var seqLens []int
 
 		for infoRec := range mergeInfoRec(processors...) {
 			if infoRec != nil {
@@ -235,7 +235,7 @@ specified.`,
 				sumMeanQualityScores += infoRec.MeanBaseQual
 				sumMeanErrorProbs += infoRec.MeanErrorProb
 
-				sumBaseQualityScores += infoRec.SumQ
+				sumBaseQualityScores += uint64(infoRec.SumQ)
 				sumBaseErrorProbs += infoRec.SumErrorProbs
 
 				seqLens = append(seqLens, length)
