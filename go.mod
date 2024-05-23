@@ -1,6 +1,6 @@
 module github.com/eernst/catseq
 
-go 1.22.3
+go 1.22
 
 require (
 	github.com/shenwei356/bio v0.13.3
